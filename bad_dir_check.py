@@ -2,6 +2,10 @@ import re
 import os
 import argparse
 
+# Scan through files, marking errors in a results tuple of (str: err_type, str: file_name, int: line)
+
+x_disable_found = False
+
 def list_files(directory):
     files_list = []
 
@@ -12,16 +16,19 @@ def list_files(directory):
 
     return files_list
 
-def check_bad_dir(file, root):
-    
+def scan_file(file, root):
+    global x_disable_found
     num_dirs_in = file.count('/')-root.count('/')
-    regex = '\.\./' * (num_dirs_in) + '[^/]+'
+    dir_regex = '\.\./' * (num_dirs_in + 1) + '[^/]+'
+    x_disable_regex = '^(?!\/\/)*app\.disable\([\'\"]x-powered-by[\'\"]\)'
     fd = open(file, 'r')
     filetext = fd.read()
+    if not x_disable_found and re.search(x_disable_regex, filetext):
+        x_disable_found = True
     result = []
     for i, line in enumerate(filetext.split('\n')):
-        if re.search(regex, line):
-            result.append((i+1, line))
+        if re.search(dir_regex, line):
+            result.append(("Directory escaping", i+1, line))
     return result
 
 def is_binary(file):
@@ -42,6 +49,8 @@ if __name__ == '__main__':
     for file in files:
         if is_binary(file):
             continue
-        matches = check_bad_dir(file, root)
+        matches = scan_file(file, root)
         for match in matches:
-            print(f"Match found in {file} on line {match[0]}: {match[1]}")
+            print(f"{match[0]} found in {file} on line {match[1]}: {match[2]}")
+    if(not x_disable_found):
+        print("Default express response header not disabled. This increases vulnerability to fingerprinting attacks and can be removed with app.disable(\"x-powered-by\").")
