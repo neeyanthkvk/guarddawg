@@ -1,24 +1,28 @@
 import re
 import os
-import mimetypes
+import argparse
 
 def list_files(directory):
     files_list = []
 
-    for root, dirs, files in os.walk(directory):
+    for root, _, files in os.walk(directory):
         for file in files:
             file_path = os.path.join(root, file)
             files_list.append(file_path)
 
     return files_list
 
-def check_bad_dir(file):
+def check_bad_dir(file, root):
     
-    num_dirs_in = file.count('/')
-    regex = '\.\./' * (num_dirs_in + 1) + '[^/]+'
+    num_dirs_in = file.count('/')-root.count('/')
+    regex = '\.\./' * (num_dirs_in) + '[^/]+'
     fd = open(file, 'r')
     filetext = fd.read()
-    return re.search(regex, filetext)
+    result = []
+    for i, line in enumerate(filetext.split('\n')):
+        if re.search(regex, line):
+            result.append((i+1, line))
+    return result
 
 def is_binary(file):
     textchars = bytearray({7,8,9,10,12,13,27} | set(range(0x20, 0x100)) - {0x7f})
@@ -29,11 +33,15 @@ def is_binary(file):
         return True
 
 if __name__ == '__main__':
-    files = list_files('.')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dir', help='Directory path', required=True)
+    args = parser.parse_args()
+    root = args.dir
+
+    files = list_files(root)
     for file in files:
-        print('DEBUG: Checking file: ' + file)
         if is_binary(file):
-            print('Binary file found: ' + file)
             continue
-        if check_bad_dir(file):
-            print('Bad directory found in file: ' + file)
+        matches = check_bad_dir(file, root)
+        for match in matches:
+            print(f"Match found in {file} on line {match[0]}: {match[1]}")
