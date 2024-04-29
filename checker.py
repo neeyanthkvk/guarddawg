@@ -30,15 +30,58 @@ def scan_file(file, root):
         return []
     num_dirs_in = file.count('/')-root.count('/')
     dir_regex = '\.\./' * (num_dirs_in) + '[^/]+'
-    x_disable_regex = '^(?!\/\/)*app\.disable\([\'\"]x-powered-by[\'\"]\)'
+    x_disable_regex = '^(?!\/\/)\s*app\.disable\([\'\"]x-powered-by[\'\"]\)'
     fd = open(file, 'r')
     filetext = fd.read()
     if not x_disable_found and re.search(x_disable_regex, filetext):
         x_disable_found = True
     result = []
+
+    # Cookie flags
+    inCookie = 0
+    isSecure = 0
+    isHTTPOnly = 0
+    hasDomain = 0
+    cookiePath = 0
+    hasExpire = 0
+
     for i, line in enumerate(filetext.split('\n')):
         if re.search(dir_regex, line):
             result.append(("Directory escaping", i+1, line))
+        
+        if re.search('^(?!\/\/)\s*cookie: \{', line):
+            inCookie = 1
+
+        if inCookie == 1:
+            if re.search('^(?!\/\/)\s*secure: true', line):
+                isSecure = 1
+            if re.search('^(?!\/\/)\s*httpOnly: true', line):
+                isHTTPOnly = 1
+            if re.search('^(?!\/\/)\s*domain: ', line):
+                hasDomain = 1
+            if re.search('^(?!\/\/)\s*path: ', line):
+                cookiePath = 1
+            if re.search('^(?!\/\/)\s*expires: ', line):
+                hasExpire = 1
+
+        if inCookie == 1 and re.search('^(?!\/\/)\s*\}', line):
+            inCookie = 0
+            if isSecure == 0:
+                print("Error: Cookie not set to secure")
+            if isHTTPOnly == 0:
+                print("Error: Cookie not set to HTTPOnly")
+            if hasDomain == 0:
+                print("Error: Cookie does not have a domain set")
+            if cookiePath == 0:
+                print("Error: Cookie does not have a path set")
+            if hasExpire == 0:
+                print("Error: Cookie does not have an expiration date set")
+
+            isSecure = 0
+            isHTTPOnly = 0
+            hasDomain = 0
+            cookiePath = 0
+            hasExpire = 0
     return result
 
 if __name__ == '__main__':
