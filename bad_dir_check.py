@@ -16,10 +16,20 @@ def list_files(directory):
 
     return files_list
 
+def is_binary(file):
+    textchars = bytearray({7,8,9,10,12,13,27} | set(range(0x20, 0x100)) - {0x7f})
+    is_binary_string = lambda bytes: bool(bytes.translate(None, textchars))
+    try:
+        return is_binary_string(open(file, 'rb').read(1024))
+    except:
+        return True
+    
 def scan_file(file, root):
     global x_disable_found
+    if is_binary(file):
+        return []
     num_dirs_in = file.count('/')-root.count('/')
-    dir_regex = '\.\./' * (num_dirs_in + 1) + '[^/]+'
+    dir_regex = '\.\./' * (num_dirs_in) + '[^/]+'
     x_disable_regex = '^(?!\/\/)*app\.disable\([\'\"]x-powered-by[\'\"]\)'
     fd = open(file, 'r')
     filetext = fd.read()
@@ -31,24 +41,15 @@ def scan_file(file, root):
             result.append(("Directory escaping", i+1, line))
     return result
 
-def is_binary(file):
-    textchars = bytearray({7,8,9,10,12,13,27} | set(range(0x20, 0x100)) - {0x7f})
-    is_binary_string = lambda bytes: bool(bytes.translate(None, textchars))
-    try:
-        return is_binary_string(open(file, 'rb').read(1024))
-    except:
-        return True
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dir', help='Directory path', required=True)
+    parser.add_argument('--dir', '-d', help='Directory path', required=True)
     args = parser.parse_args()
     root = args.dir
-
+    root = root.strip('/')
     files = list_files(root)
+
     for file in files:
-        if is_binary(file):
-            continue
         matches = scan_file(file, root)
         for match in matches:
             print(f"{match[0]} found in {file} on line {match[1]}: {match[2]}")
