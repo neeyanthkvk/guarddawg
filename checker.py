@@ -5,6 +5,7 @@ import argparse
 # Scan through files, marking errors in a results tuple of (str: err_type, str: file_name, int: line)
 
 x_disable_found = False
+helmet_found = False
 
 def list_files(directory):
     files_list = []
@@ -26,19 +27,66 @@ def is_binary(file):
     
 def scan_file(file, root):
     global x_disable_found
+    global helmet_found
     if is_binary(file):
         return []
     num_dirs_in = file.count('/')-root.count('/')
     dir_regex = '\.\./' * (num_dirs_in) + '[^/]+'
-    x_disable_regex = '^(?!\/\/)*app\.disable\([\'\"]x-powered-by[\'\"]\)'
+    x_disable_regex = '^.*app\.disable\([\'\"]x-powered-by[\'\"]\)'
     fd = open(file, 'r')
     filetext = fd.read()
     if not x_disable_found and re.search(x_disable_regex, filetext):
         x_disable_found = True
+    if not helmet_found and 'app.use(helmet())' in filetext:
+        helmet_found = True
     result = []
+
+    # Cookie flags
+    inCookie = 0
+    isSecure = 0
+    isHTTPOnly = 0
+    hasDomain = 0
+    cookiePath = 0
+    hasExpire = 0
+
     for i, line in enumerate(filetext.split('\n')):
+        line = line.split('//')[0]
         if re.search(dir_regex, line):
             result.append(("Directory escaping", i+1, line))
+        
+        if re.search('^.*cookie: \{', line):
+            inCookie = 1
+
+        if inCookie == 1:
+            if re.search('^.*secure: true', line):
+                isSecure = 1
+            if re.search('^.*httpOnly: true', line):
+                isHTTPOnly = 1
+            if re.search('^.*domain: ', line):
+                hasDomain = 1
+            if re.search('^.*path: ', line):
+                cookiePath = 1
+            if re.search('^.*expires: ', line):
+                hasExpire = 1
+
+        if inCookie == 1 and re.search('^.*\}', line):
+            inCookie = 0
+            if isSecure == 0:
+                print("Error: Cookie not set to secure")
+            if isHTTPOnly == 0:
+                print("Error: Cookie not set to HTTPOnly")
+            if hasDomain == 0:
+                print("Error: Cookie does not have a domain set")
+            if cookiePath == 0:
+                print("Error: Cookie does not have a path set")
+            if hasExpire == 0:
+                print("Error: Cookie does not have an expiration date set")
+
+            isSecure = 0
+            isHTTPOnly = 0
+            hasDomain = 0
+            cookiePath = 0
+            hasExpire = 0
     return result
 
 if __name__ == '__main__':
@@ -55,3 +103,5 @@ if __name__ == '__main__':
             print(f"{match[0]} found in {file} on line {match[1]}: {match[2]}")
     if(not x_disable_found):
         print("Default express response header not disabled. This increases vulnerability to fingerprinting attacks and can be removed with app.disable(\"x-powered-by\").")
+    if(not helmet_found):
+        print("Helmet is not used. Helmet can help protect your app from well-known web vulnerabilities by setting HTTP headers appropriately.")
